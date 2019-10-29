@@ -6,36 +6,36 @@ use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
-use std::sync::{RwLock};
+use std::sync::RwLock;
 use std::hash::Hash;
 
 type PathNodeRef<T> = Rc<RwLock<PathNode<T>>>;
 type PathNodeRefWeak<T> = Weak<RwLock<PathNode<T>>>;
 
 struct PathNode<T> {
-	name: OsString,
+	//	name: OsString,
 	data: Option<T>,
 	items: HashMap<OsString, PathNodeRef<T>>,
-	parent: Option<PathNodeRefWeak<T>>,
+//	parent: Option<PathNodeRefWeak<T>>,
 }
 
 impl<T> PathNode<T> {
 	/// Creates the root path node
-	pub fn root(data: Option<T>) -> Self {
-		Self {
-			name: OsString::from("/"),
-			items: HashMap::new(),
-			data,
-			parent: None,
-		}
-	}
+//	pub fn root(data: Option<T>) -> Self {
+//		Self {
+////			name: OsString::from("/"),
+//			items: HashMap::new(),
+//			data,
+////			parent: None,
+//		}
+//	}
 
-	pub fn new(name: OsString, data: Option<T>, parent: PathNodeRefWeak<T>) -> Self {
+	pub fn new(data: Option<T>) -> Self {
 		Self {
-			name,
+//			name,
 			items: HashMap::new(),
 			data,
-			parent: Some(parent),
+//			parent: Some(parent),
 		}
 	}
 
@@ -52,7 +52,7 @@ pub struct PathStore<T> {
 impl<T> PathStore<T> {
 	pub fn new(data: Option<T>) -> Self {
 		Self {
-			root: Rc::new(RwLock::new(PathNode::root(data))),
+			root: Rc::new(RwLock::new(PathNode::new(data))),
 			size: 0,
 		}
 	}
@@ -81,11 +81,7 @@ impl<T> PathStore<T> {
 			} else {
 				self.size += 1;
 				changed = true;
-				let to_add = Rc::new(RwLock::new(PathNode::new(
-					item.as_os_str().to_os_string(),
-					None,
-					Rc::downgrade(&current_in_tree),
-				)));
+				let to_add = Rc::new(RwLock::new(PathNode::new(None)));
 
 				drop(current_tree_lock);
 				{
@@ -103,23 +99,24 @@ impl<T> PathStore<T> {
 
 	pub fn walk(&self) -> Vec<OsString> {
 		let mut out = Vec::new();
-		Self::walk_inner(&self.root, &mut PathBuf::new(), &mut out);
+		Self::walk_inner(&self.root, &"/".to_owned().into(), &mut PathBuf::new(), &mut out);
 		out
 	}
 
-	fn walk_inner(current_node: &PathNodeRef<T>, current_dir: &mut PathBuf, out: &mut Vec<OsString>) {
+	fn walk_inner(current_node: &PathNodeRef<T>, name: &OsString, current_dir: &mut PathBuf, out: &mut Vec<OsString>) {
 		let mut current_node = &current_node
 			.read()
 			.expect("Failed to lock tree node when adding path");
 
-		current_dir.push(&current_node.name);
+		current_dir.push(name);
+//		current_dir.push(&current_node.name);
 
 		if current_node.items.is_empty() {
 			out.push(current_dir.as_os_str().to_owned());
 //			println!("{}", current_dir.display())
 		} else {
-			for item in current_node.items.values() {
-				Self::walk_inner(item, current_dir, out);
+			for item in current_node.items.iter() {
+				Self::walk_inner(item.1, item.0, current_dir, out);
 			}
 		}
 
@@ -134,33 +131,38 @@ impl<T> PathStore<T> {
 #[cfg(test)]
 mod tests {
 	use super::PathStore;
+	use std::ffi::OsString;
 
 	#[test]
 	fn root_store_push() {
-		let mut store = PathStore::new();
+		let mut store = PathStore::new(None::<()>);
 		assert_eq!(store.size, 0);
 
-		assert_eq!(store.add_path("/f"), Ok(true));
-		assert_eq!(store.add_path("/g"), Ok(true));
-		assert_eq!(store.add_path("/f"), Ok(false));
-		assert_eq!(store.add_path("h").is_err(), true);
+		assert_eq!(store.add_path("/f", None), Ok(true));
+		assert_eq!(store.add_path("/g", None), Ok(true));
+		assert_eq!(store.add_path("/f", None), Ok(false));
+		assert_eq!(store.add_path("h", None).is_err(), true);
 		assert_eq!(store.size, 2);
 	}
 
 	#[test]
 	fn root_store_push_double() {
-		let mut store = PathStore::new();
+		let mut store = PathStore::new(None::<()>);
 		assert_eq!(store.size, 0);
 
-		assert_eq!(store.add_path("/f"), Ok(true));
-		assert_eq!(store.add_path("/g"), Ok(true));
-		assert_eq!(store.add_path("/f/FDrive/files"), Ok(true));
-		assert_eq!(store.add_path("/f/FDrive/hello"), Ok(true));
-		assert_eq!(store.add_path("/f"), Ok(false));
-		assert_eq!(store.add_path("h").is_err(), true);
+		assert_eq!(store.add_path("/f", None), Ok(true));
+		assert_eq!(store.add_path("/g", None), Ok(true));
+		assert_eq!(store.add_path("/f/FDrive/files", None), Ok(true));
+		assert_eq!(store.add_path("/f/FDrive/hello", None), Ok(true));
+		assert_eq!(store.add_path("/f", None), Ok(false));
+		assert_eq!(store.add_path("h", None).is_err(), true);
 		assert_eq!(store.size, 5);
 
-		dbg!(store.walk());
-		panic!()
+		let walk = store.walk();
+		assert_eq!(walk, vec![
+			OsString::from("/f/FDrive/hello".to_owned()),
+			OsString::from("/f/FDrive/files".to_owned()),
+			OsString::from("/g".to_owned()),
+		]);
 	}
 }
